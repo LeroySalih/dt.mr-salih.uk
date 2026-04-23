@@ -77,3 +77,80 @@ export async function listTopics(): Promise<TopicSummary[]> {
     } satisfies TopicSummary
   })
 }
+
+export type ActivityType =
+  | "text"
+  | "display-key-terms"
+  | "display-image"
+  | "show-video"
+  | "multiple-choice-question"
+  | "short-text-question"
+  | "do-flashcards"
+  | "display-flashcards"
+  | "file-download"
+  | "upload-file"
+  | "text-question"
+
+export const ALLOWED_ACTIVITY_TYPES: readonly ActivityType[] = [
+  "text",
+  "display-key-terms",
+  "display-image",
+  "show-video",
+  "multiple-choice-question",
+  "short-text-question",
+  "do-flashcards",
+  "display-flashcards",
+  "file-download",
+  "upload-file",
+  "text-question",
+]
+
+export type Activity = {
+  activityId: string
+  type: ActivityType
+  title: string | null
+  orderBy: number
+  bodyData: unknown
+}
+
+export type TopicDetail = TopicSummary & {
+  activities: Activity[]
+}
+
+export async function getTopicByCode(code: string): Promise<TopicDetail | null> {
+  const topics = await listTopics()
+  const summary = topics.find((t) => t.code === code)
+  if (!summary) return null
+
+  const { rows } = await query<{
+    activity_id: string
+    type: string | null
+    title: string | null
+    order_by: number | null
+    body_data: unknown
+  }>(
+    `
+      select activity_id, type, title, coalesce(order_by, 0) as order_by, body_data
+      from activities
+      where lesson_id = $1
+        and coalesce(active, true) = true
+        and type = any($2::text[])
+      order by order_by asc, activity_id asc
+    `,
+    [summary.lessonId, ALLOWED_ACTIVITY_TYPES as unknown as string[]],
+  )
+
+  const activities: Activity[] = rows
+    .filter((r): r is typeof r & { type: ActivityType } =>
+      r.type !== null && (ALLOWED_ACTIVITY_TYPES as readonly string[]).includes(r.type),
+    )
+    .map((r) => ({
+      activityId: r.activity_id,
+      type: r.type,
+      title: r.title,
+      orderBy: r.order_by ?? 0,
+      bodyData: r.body_data,
+    }))
+
+  return { ...summary, activities }
+}
