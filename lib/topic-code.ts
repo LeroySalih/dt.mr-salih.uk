@@ -1,4 +1,4 @@
-const CODE_PREFIX_RE = /^(\d+(?:\.\d+){1,2})\s*(.*?)\s*$/s
+const CODE_PREFIX_RE = /^(\d+(?:\.\d+){1,2})\s*([\s\S]*?)\s*$/
 
 export type ParsedTopicCode = { code: string; title: string }
 
