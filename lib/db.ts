@@ -1,0 +1,118 @@
+import { Pool, type PoolClient, type QueryResult } from "pg"
+
+let pool: Pool | null = null
+const MAX_CONNECT_RETRIES = 5
+const CONNECT_RETRY_DELAY_MS = 200
+const DB_LOG_PREFIX = "[db]"
+
+function resolveConnectionString() {
+  return process.env.DATABASE_URL ?? null
+}
+
+function resolveSslConfig(connectionString: string) {
+  try {
+    const url = new URL(connectionString)
+    const sslMode = (url.searchParams.get("sslmode") ?? "").toLowerCase()
+    const host = url.hostname.toLowerCase()
+
+    // Local Docker/compose hosts typically have no SSL enabled.
+    if (host === "db" || host === "localhost" || host === "127.0.0.1") {
+      return false
+    }
+
+    if (sslMode === "disable") {
+      return false
+    }
+    if (sslMode === "require" || sslMode === "verify-ca" || sslMode === "verify-full") {
+      return { rejectUnauthorized: false }
+    }
+  } catch {
+    // Fall through to heuristic below.
+  }
+
+  // Default to no SSL unless explicitly required.
+  return false
+}
+
+function getPool() {
+  if (pool) return pool
+
+  const connectionString = resolveConnectionString()
+  if (!connectionString) {
+    throw new Error("Database connection is not configured (DATABASE_URL missing).")
+  }
+
+  try {
+    pool = new Pool({
+      connectionString,
+      ssl: resolveSslConfig(connectionString),
+    })
+  } catch (error) {
+    console.error(`${DB_LOG_PREFIX} failed to create pool`, error)
+    throw error
+  }
+  pool.on("error", (error) => {
+    console.error("[db] idle client error:", error)
+  })
+
+  return pool
+}
+
+function resetPool() {
+  if (pool) {
+    pool.end().catch((error) => console.error("[db] failed to end pool during reset", error))
+  }
+  pool = null
+}
+
+function isRetryableError(error: unknown) {
+  const code = (error as { code?: string })?.code?.toLowerCase?.()
+  if (code && (code === "econnreset" || code === "etimedout" || code === "econnrefused")) {
+    return true
+  }
+  const message = (error as { message?: string })?.message?.toLowerCase?.() ?? ""
+  return message.includes("econnreset") || message.includes("socket hang up")
+}
+
+async function getClientWithRetry(): Promise<PoolClient> {
+  const activePool = getPool()
+  let lastError: unknown
+
+  for (let attempt = 0; attempt < MAX_CONNECT_RETRIES; attempt += 1) {
+    try {
+      return await activePool.connect()
+    } catch (error) {
+      lastError = error
+      const retryable = isRetryableError(error)
+      const hasAttemptsLeft = attempt < MAX_CONNECT_RETRIES - 1
+      if (!retryable || !hasAttemptsLeft) {
+        console.error(
+          `${DB_LOG_PREFIX} failed to obtain client after ${attempt + 1} attempt(s)`,
+          error,
+        )
+        throw error
+      }
+      resetPool()
+      const delay = CONNECT_RETRY_DELAY_MS * (attempt + 1)
+      await new Promise((resolve) => setTimeout(resolve, delay))
+    }
+  }
+
+  throw lastError ?? new Error("Database connection failed")
+}
+
+export async function withDbClient<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
+  const client = await getClientWithRetry()
+  try {
+    return await fn(client)
+  } finally {
+    client.release()
+  }
+}
+
+export async function query<T extends Record<string, unknown> = Record<string, unknown>>(
+  text: string,
+  params: unknown[] = [],
+): Promise<QueryResult<T>> {
+  return withDbClient((client) => client.query<T>(text, params))
+}
