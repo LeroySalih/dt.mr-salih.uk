@@ -83,22 +83,76 @@ Design's existing CSS (`styles-v2.css`) and JSX structure (`app-v2.jsx`, `auth-v
 
 ## 4. Data mapping (dino → UI)
 
-| UI concept | Dino source |
-|---|---|
-| **Core section band** | Lessons belonging to units named `Core 1`, `Core 2`, `Core 3` (`units.title`) |
-| **Systems section band** | Lessons belonging to unit named `Systems` (`units.title`) |
-| **Topic** (e.g. `1.5`) | One `lessons` row under one of the above units |
-| **Topic code** | Prefix of `lessons.title` (e.g. `"1.5 Design strategies and iterative design"` → code `1.5`, display title `"Design strategies and iterative design"`). Parser strips the leading code token and whitespace. |
-| **Study-notes sections** | `activities` with `type = 'display-text'`, ordered by `activities.order_index` (or equivalent ordering column) within the lesson. `title` → section heading; `body_data` → body. |
-| **Inline MCQ in notes** | `activities.type = 'multiple-choice-question'` appearing between display-text activities in the lesson's ordered list |
-| **Inline Explain in notes** | `activities.type = 'short-text-question'` appearing between display-text activities in the lesson's ordered list |
-| **Flashcards (button)** | The lesson's single `activities.type = 'flashcard'` row. `body_data` holds the term/def array. |
-| **Quiz (button)** | All MCQ activities in the lesson, played sequentially |
-| **Explain (button)** | All short-text activities in the lesson, played sequentially |
-| **Topic title** | Parsed from `lessons.title` |
-| **`vocabCount`** in design | Count of term/def entries in the lesson's flashcard activity `body_data` |
+**Reference: [docs/superpowers/notes/dino-content-shapes.md](../notes/dino-content-shapes.md)** — live DB inspection results (Task 1.2). This section supersedes earlier drafts of §4 based on those findings.
 
-**Only these four units and their lessons are displayed.** All other curricula in dino are ignored by this site.
+### Units and sections
+
+Filter by `unit_id`, not title. The four canonical units:
+
+| unit_id | DB title | Band |
+|---|---|---|
+| `1001-CORE-1` | `1001-Core 1` | Core |
+| `1003-CORE-2` | `1003 - Core 2` | Core |
+| `CORE-3-10` | `Core 3` | Core |
+| `1010-SYSTEMS-1` | `Systems 1` | Systems |
+
+### Topics
+
+A **topic = one `lessons` row** belonging to one of those four units, with titles that do NOT match the case-insensitive regex `/assessment/i` (filters out `Assessment 1`, `SCT - Assessment`, `Energy Generation Assessment`, etc.). That yields ≈40 topics (not 25).
+
+**Topic code** is parsed from the prefix of `lessons.title`. The live data uses multiple formats:
+- `1.1.1 Technology Impact` → code `1.1.1`
+- `1.4` (bare), `1.5.6 Gears`, `5.3 Selection of Components` → code as shown
+- Some lessons have no code (`Overview`, `Sustainability & Social Footprint`) — these still render, code field shown as empty, title used as display.
+
+Parser accepts any `\d+(?:\.\d+){1,2}` prefix followed by optional whitespace then the remainder as display title.
+
+### Activity types (actual types in dino)
+
+| UI concept | Dino activity type(s) |
+|---|---|
+| **Study-notes section** | `text` (HTML in `body_data.text`) and `display-key-terms` (markdown in `body_data.markdown`). Each becomes one section, title from `activities.title`, body rendered per type. |
+| **Inline images in notes** | `display-image` (`body_data.fileUrl` or `body_data.imageUrl`) — rendered in place between other activities |
+| **Inline videos in notes** | `show-video` (`body_data.fileUrl`, usually a YouTube URL) — rendered as an embedded player between other activities |
+| **Inline MCQ** | `multiple-choice-question` (`body_data` = `{ question, options: [{id, text, imageUrl}], correctOptionId, imageUrl }`) |
+| **Inline Explain** (signed-in only) | `short-text-question` (`body_data` = `{ question, modelAnswer }`) |
+| **Flashcards (button)** | `do-flashcards` activity (`body_data.flashcardActivityId` references a `display-flashcards` activity whose `body_data.lines` is a multi-line fill-in-the-blank string with `**bold**` answers). Progress keyed by the `do-flashcards` activity id. |
+| **Quiz (button)** | All `multiple-choice-question` activities in the lesson, sequentially |
+| **Explain (button)** | All `short-text-question` activities in the lesson, sequentially |
+| **Other types** (`file-download`, `upload-file`, `text-question`) | Rendered as a minimal placeholder in notes ("Download attachment" / "Upload assignment" links) if present. Not part of topic %. |
+
+Activities are ordered by `activities.order_by` (ascending). Duplicate `order_by` values exist in Systems 1 — tie-break by `activity_id` for stability.
+
+### Flashcards content shape
+
+The `do-flashcards` activity references a `display-flashcards` activity via `body_data.flashcardActivityId`. The referenced activity's `body_data.lines` is a multi-line string like:
+
+```
+A process that removes material is called **subtractive**.
+A process that changes material is called **transformative**.
+```
+
+Parse each non-empty line into a card `{ sentence, answer, template }`:
+- `sentence` — the full line with `**` markers removed (`"A process that removes material is called subtractive."`)
+- `answer` — the word that was between `**…**` (`"subtractive"`)
+- `template` — the line with the answer replaced by `___` (`"A process that removes material is called ___."`)
+
+### Flashcards UX
+
+Match planner-004's existing `FlashcardSession` behaviour (`planner-004/src/components/flashcards/flashcard-session.tsx`):
+
+- Typed-answer input (not flip cards).
+- Similarity-based fuzzy match (copy planner-004's `lib/flashcards/similarity.ts` + `SIMILARITY_THRESHOLD`).
+- Practice-to-clean-pass: cards stay in the pile until every card has been answered correctly *consecutively*. Wrong answers push the card back 2 positions; correct answers move it to the end.
+- Writes progressive scores via `submissions` row on the `do-flashcards` activity, tracked by `submission_id` ref.
+- Records every attempt into `flashcard_attempts` (reversing the v1 plan's decision to skip this table — required for parity with planner-004's scoring).
+- Creates a `flashcard_sessions` row on start; sets `status='completed'` on clean pass.
+
+### Vocab count on topic cards
+
+Derived from the count of non-empty lines in the referenced `display-flashcards` activity's `body_data.lines`. A lesson with no `do-flashcards` activity shows `0 key words`.
+
+**Only the four unit_ids listed are displayed, filtered to exclude `/assessment/i` lessons.** All other curricula in dino are ignored by this site.
 
 ## 5. Progress model
 

@@ -12,7 +12,33 @@
 
 **Reference design files:** `Dino 2-design files/{v2.html,styles-v2.css,app-v2.jsx,auth-v2.jsx,topics.js,assets/}`
 
-**Reference implementation (read-only — never import, always copy/adapt):** `/Users/leroysalih/nodejs/planner-004/src/lib/{db.ts,auth.ts,ai/marking-queue.ts,server-actions/auth.ts,server-actions/short-text.ts,server-actions/flashcards.ts}`
+**Reference implementation (read-only — never import, always copy/adapt):** `/Users/leroysalih/nodejs/planner-004/src/lib/{db.ts,auth.ts,ai/marking-queue.ts,server-actions/auth.ts,server-actions/short-text.ts,server-actions/flashcards.ts}`, `/Users/leroysalih/nodejs/planner-004/src/components/flashcards/{flashcard-session.tsx,flashcard-card.tsx}`, `/Users/leroysalih/nodejs/planner-004/src/lib/flashcards/similarity.ts`
+
+---
+
+## Amendments (2026-04-23 — post Task 1.2 inspection)
+
+Task 1.2 inspected the live dino database and found the spec's original assumptions were wrong in several ways. Spec §4 has been rewritten; the changes affect these downstream tasks:
+
+- **Task 1.3** — Topic-code regex must accept `\d+(?:\.\d+){1,2}` (1.1, 1.1.1, 5.3.2). Lessons without a code prefix are still valid topics — parser returns `{ code: "", title: raw.trim() }` rather than null.
+- **Task 1.4** — Filter by `unit_id` in `("1001-CORE-1","1003-CORE-2","CORE-3-10","1010-SYSTEMS-1")`, and exclude `lessons.title ~* 'assessment'` (Postgres case-insensitive regex). Section is `systems` when `unit_id = '1010-SYSTEMS-1'`, else `core`. Expect ~40 topics, not 25.
+- **Task 1.4** — `vocabCount` comes from the count of non-empty lines in the `display-flashcards` activity referenced by the lesson's `do-flashcards` activity (`body_data.flashcardActivityId`), not `jsonb_array_length`.
+- **Task 1.5** — Include these activity types in the topic detail: `text`, `display-key-terms`, `display-image`, `show-video`, `multiple-choice-question`, `short-text-question`, `do-flashcards`, `display-flashcards`. Type union in `Activity` is `"text" | "display-key-terms" | "display-image" | "show-video" | "multiple-choice-question" | "short-text-question" | "do-flashcards" | "display-flashcards"`. Order by `order_by asc, activity_id asc` (tie-break for Systems 1's duplicate order_by values).
+- **Task 3.1 (flashcards)** — A lesson's flashcard identity is its **`do-flashcards` activity id**. `flashcard_sessions` is keyed by `activity_id` (that column exists on the table — planner-004's active code confirms), not by `lesson_id`. Query: `flashcard_sessions fs JOIN activities a ON a.activity_id = fs.activity_id WHERE fs.pupil_id = $1 AND a.lesson_id = any($2) AND a.type = 'do-flashcards' AND fs.status = 'completed'`.
+- **Task 3.1 (mcq)** — MCQ correctness is determined from `body_data.correctOptionId` matching the submission's chosen `option_id`. The existing `compute_submission_base_score` reads `body->>'is_correct'` first, so submission writes (Task 6.1) must set `is_correct: boolean` in the body payload for it to work.
+- **Task 5.1** — `flashcard_sessions` insert columns match planner-004's current shape: `(pupil_id, activity_id, total_cards, do_activity_id)`. `do_activity_id` and `activity_id` both reference activities (the `display-flashcards` vs the `do-flashcards`). Use the same insert shape planner-004 uses. Write progressive `submissions` rows for the `do-flashcards` activity via an upsert pattern modeled on planner-004's `upsertDoFlashcardsSubmissionAction`.
+- **Task 5.2 (major rewrite)** — Replace the term/def FlashcardsModal with a **ported `FlashcardSession`** that matches planner-004's typed-answer fuzzy-match practice-to-clean-pass UX. Copy `planner-004/src/lib/flashcards/similarity.ts` verbatim into `lib/flashcards/similarity.ts`. Card shape is `{ sentence, answer, template }` parsed from `body_data.lines` of the `display-flashcards` activity (each line, with `**word**` extracted as `answer`, replaced with `___` for `template`). Do NOT use the design's `<div className="flashcard">` flip markup; use a text-input-based card UI instead. Reuse the existing `styles-v2.css` primitives (`.btn`, `.modal`, etc.) but expect a visual deviation from the design for this one mode.
+- **Task 6.1** — MCQ body payload: `{ type: "multiple-choice-question", body: { option_id: <option-x>, is_correct: <bool>, score: <0|1>, correctOptionId: <option-x> } }`. Client computes `is_correct` by comparing chosen `option_id` to the activity's `body_data.correctOptionId`.
+- **Task 6.2** — Quiz answers array is now `{ option_id }` not `{ picked_index }` since options have stable ids (`option-a`, `option-b`, …).
+- **Task 7.1** — `NotesSection` grouping: a "section" is started by each `text` OR `display-key-terms` activity. `display-image` / `show-video` that follow a section are appended as "media blocks" within that section. MCQ/short-text inside a section are rendered as inline blocks (signed-in only for short-text). A lesson may have zero `text`/`display-key-terms` activities — in that case render all activities in a single unnamed section.
+- **Task 7.1** — Render helpers:
+  - `text` → `dangerouslySetInnerHTML={{ __html: bodyData.text }}` inside a sanitising wrapper (use `DOMPurify` for safety if adding a lib is acceptable, otherwise a minimal server-side whitelist is fine — prefer DOMPurify: `pnpm add isomorphic-dompurify`).
+  - `display-key-terms` → render markdown table via a minimal markdown helper (use `marked` or `micromark`: `pnpm add marked`).
+  - `display-image` → `<img src={fileUrl || imageUrl} alt={imageAlt ?? ""} />`. If `fileUrl` is a bare filename (e.g. `Slide2.jpeg`), it must be resolved against a base URL — **open question**: where are these images served from? Flag if undiscoverable at runtime. Fallback: render the filename as a plain string so nothing breaks.
+  - `show-video` → if `fileUrl` is a YouTube URL, render an `<iframe>` with the youtu.be/watch URL converted to embed. Otherwise render a plain link.
+- **Task 8.4** — `short-text-question` body shape is `{ question, modelAnswer }`, not `{ prompt, hint }`. Pass `question` as the prompt displayed to the pupil.
+
+Subagents executing these tasks should read this section FIRST and treat any conflict with the original task text as resolved in favour of these amendments.
 
 ---
 
