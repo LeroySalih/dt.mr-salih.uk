@@ -1,0 +1,803 @@
+const { useState, useEffect, useMemo } = React;
+
+// ---------- Progress ----------
+const LS_KEY = "dt_revision_progress_v1";
+function loadProgress() {
+  try {return JSON.parse(localStorage.getItem(LS_KEY)) || {};}
+  catch {return {};}
+}
+function topicPercent(entry) {
+  if (!entry) return 0;
+  const fc = entry.flashcardsDone ? 1 : 0;
+  const mcq = (entry.mcqBestScore || 0) >= 0.8 ? 1 : 0;
+  const ex = entry.explainSelfAssessed ? 1 : 0;
+  return Math.round((fc + mcq + ex) / 3 * 100);
+}
+window.topicPercent = topicPercent;
+
+// ---------- Icons (simple, friendly SVG) ----------
+const Icons = {
+  bulb:
+  <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path d="M24 6c-7 0-12 5-12 12 0 5 3 8 5 11v4h14v-4c2-3 5-6 5-11 0-7-5-12-12-12Z" fill="#fff" stroke="#2A2344" strokeWidth="2" strokeLinejoin="round" />
+      <path d="M18 38h12M19 42h10" stroke="#2A2344" strokeWidth="2" strokeLinecap="round" />
+      <path d="M22 20l2 4 2-4" stroke="#2A2344" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>,
+
+  gear:
+  <svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
+      <circle cx="24" cy="24" r="8" fill="#fff" stroke="#2A2344" strokeWidth="2" />
+      <circle cx="24" cy="24" r="3" fill="#2A2344" />
+      <g stroke="#2A2344" strokeWidth="2" strokeLinecap="round">
+        <path d="M24 4v6M24 38v6M4 24h6M38 24h6M10 10l4 4M34 34l4 4M38 10l-4 4M14 34l-4 4" />
+      </g>
+    </svg>,
+
+  chip:
+  <svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
+      <rect x="12" y="12" width="24" height="24" rx="3" fill="#fff" stroke="#2A2344" strokeWidth="2" />
+      <rect x="18" y="18" width="12" height="12" rx="1" fill="#2A2344" />
+      <g stroke="#2A2344" strokeWidth="2" strokeLinecap="round">
+        <path d="M18 6v6M24 6v6M30 6v6M18 36v6M24 36v6M30 36v6" />
+        <path d="M6 18h6M6 24h6M6 30h6M36 18h6M36 24h6M36 30h6" />
+      </g>
+    </svg>,
+
+  tools:
+  <svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
+      <path d="M30 8a8 8 0 0 0-8 10L8 32l4 4 14-14a8 8 0 0 0 10-8l-4 4-4-1-1-4 4-4Z" fill="#fff" stroke="#2A2344" strokeWidth="2" strokeLinejoin="round" />
+    </svg>,
+
+  book:
+  <svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
+      <path d="M8 10h14c2 0 4 2 4 4v26c0-2-2-4-4-4H8V10Z" fill="#fff" stroke="#2A2344" strokeWidth="2" strokeLinejoin="round" />
+      <path d="M40 10H26c-2 0-4 2-4 4v26c0-2 2-4 4-4h14V10Z" fill="#fff" stroke="#2A2344" strokeWidth="2" strokeLinejoin="round" />
+    </svg>,
+
+  leaf:
+  <svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
+      <path d="M38 8c-14 0-26 8-26 22 0 6 4 10 10 10 12 0 20-14 16-32ZM18 38l12-14" fill="#fff" stroke="#2A2344" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+    </svg>,
+
+  wave:
+  <svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
+      <path d="M6 24c4-8 8-8 12 0s8 8 12 0 8-8 12 0" stroke="#2A2344" strokeWidth="2" strokeLinecap="round" fill="none" />
+      <circle cx="24" cy="24" r="18" stroke="#2A2344" strokeWidth="2" fill="none" />
+    </svg>,
+
+  star:
+  <svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
+      <path d="m24 6 5 12 13 1-10 9 3 13-11-7-11 7 3-13-10-9 13-1 5-12Z" fill="#fff" stroke="#2A2344" strokeWidth="2" strokeLinejoin="round" />
+    </svg>
+
+};
+
+// Map each topic code → icon + tint color
+const TINTS = ["mint", "peach", "sky", "lilac", "lemon", "coral", "teal"];
+function tintFor(index) {return TINTS[index % TINTS.length];}
+
+const ICON_FOR = {
+  "1.1": "leaf", "1.2": "star", "1.3": "bulb", "1.4": "book",
+  "1.5": "bulb", "1.6": "tools", "1.7": "gear", "1.8": "book",
+  "1.9": "star", "1.10": "leaf", "1.11": "tools", "1.12": "wave",
+  "1.13": "gear", "1.14": "book", "1.15": "star", "1.16": "gear", "1.17": "chip",
+  "5.1": "chip", "5.2": "wave", "5.3": "gear", "5.4": "chip",
+  "5.5": "wave", "5.6": "tools", "5.7": "chip", "5.8": "tools"
+};
+
+// ---------- Hero / stats ----------
+function Hero({ overall, coreDone, coreTotal, sysDone, sysTotal, user }) {
+  return (
+    <div className="hero">
+      <div className="hero-top">
+        <div className="logo">
+          <div className="logo-mark">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 3 4 7v6c0 5 4 8 8 8s8-3 8-8V7l-8-4Z" />
+              <path d="m9 12 2 2 4-4" />
+            </svg>
+          </div>
+          <span>Revise<b>Kit</b></span>
+        </div>
+        <div className="hero-spec">
+          Edexcel iGCSE · D&amp;T Systems
+        </div>
+      </div>
+
+      <div className="hero-body">
+        <div className="hero-body-left">
+          <h1>{user ? <>Hey <em>{user.name.split(" ")[0]}</em> — let's smash it.</> : <>Let's smash <em>GCSE revision</em> — one topic at a time.</>}</h1>
+          <p className="hero-sub">
+            Flip flashcards, crush quizzes, and practise exam answers across all 25 topics. Your progress saves automatically.
+          </p>
+
+          <div className="stats" style={{ width: "0.844px" }}>
+            <div className="stat stat-overall">
+              <div className="stat-value">{overall}<span className="suf">%</span></div>
+              <div className="stat-label">Overall</div>
+            </div>
+            <div className="stat stat-core">
+              <div className="stat-value">{coreDone}<span className="suf">/{coreTotal}</span></div>
+              <div className="stat-label">Core done</div>
+            </div>
+            <div className="stat stat-sys">
+              <div className="stat-value">{sysDone}<span className="suf">/{sysTotal}</span></div>
+              <div className="stat-label">Systems done</div>
+            </div>
+            <div className="stat">
+              <div className="stat-value">25</div>
+              <div className="stat-label">Topics total</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="hero-body-right">
+          <img src="assets/hero-pupils.png" alt="Two pupils with boxes of D&T topics" className="hero-illo" style={{ width: "300px", height: "300px" }} />
+        </div>
+      </div>
+    </div>);
+
+}
+
+// ---------- Topic card ----------
+function TopicCard({ topic, entry, index, onOpen }) {
+  const pct = topicPercent(entry);
+  const done = pct === 100;
+  const tint = tintFor(index);
+  const iconKey = ICON_FOR[topic.code] || "star";
+
+  return (
+    <article data-tint={tint} className={`card tint-${tint} ${done ? "card-done" : ""}`}>
+      <div className="card-top">
+        <div className="card-chiprow">
+          <span className="card-code">{topic.code}</span>
+          {done && <div className="card-badge" title="Complete!">✓</div>}
+        </div>
+        <h3 className="card-title">{topic.title}</h3>
+        <div className="card-icon">{Icons[iconKey]}</div>
+      </div>
+      <div className="card-body">
+        <div className="card-meta">
+          <span>{topic.vocabCount} key words</span>
+          <span className="dot" />
+          <span>3 ways to study</span>
+        </div>
+
+        <button className="notes-row" onClick={() => onOpen(topic, "notes")}>
+          <span className="notes-label">Open study notes →</span>
+          <span className="progress-row inline">
+            <span className="progress-track">
+              <span className="progress-fill" style={{ width: pct + "%" }} />
+            </span>
+            <span className="progress-pct">{pct}%</span>
+          </span>
+        </button>
+
+        <div className="card-actions">
+          <button className="act" onClick={() => onOpen(topic, "flashcards")}>
+            <span className="act-icon">🃏</span>
+            Flashcards
+          </button>
+          <button className="act" onClick={() => onOpen(topic, "mcq")}>
+            <span className="act-icon">✏️</span>
+            Quiz
+          </button>
+          <button className="act" onClick={() => onOpen(topic, "explain")}>
+            <span className="act-icon">💬</span>
+            Explain
+          </button>
+        </div>
+      </div>
+    </article>);
+
+}
+
+// ---------- Modal shell ----------
+function Modal({ topic, tint, onClose, children, footer, title }) {
+  useEffect(() => {
+    const onKey = (e) => {if (e.key === "Escape") onClose();};
+    window.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => {window.removeEventListener("keydown", onKey);document.body.style.overflow = "";};
+  }, [onClose]);
+
+  const tintVar = {
+    mint: "var(--mint)", peach: "var(--peach)", sky: "var(--sky)",
+    lilac: "var(--lilac)", lemon: "var(--lemon)", coral: "var(--coral)", teal: "var(--teal)"
+  }[tint] || "var(--peach)";
+  const deepVar = {
+    mint: "var(--mint-deep)", peach: "var(--peach-deep)", sky: "var(--sky-deep)",
+    lilac: "var(--lilac-deep)", lemon: "var(--lemon-deep)", coral: "var(--coral-deep)", teal: "var(--teal-deep)"
+  }[tint] || "var(--peach-deep)";
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}
+      style={{ "--card-tint": tintVar, "--card-deep": deepVar }}>
+        <header className="modal-head">
+          <span className="card-code">{topic.code}</span>
+          <h3 className="modal-title">{title}</h3>
+          <button className="modal-close" onClick={onClose} aria-label="close">✕</button>
+        </header>
+        <div className="modal-body">{children}</div>
+        {footer && <div className="modal-foot">{footer}</div>}
+      </div>
+    </div>);
+
+}
+
+// ---------- Flashcards modal ----------
+function FlashcardsModal({ topic, tint, onClose }) {
+  const cards = topic.flashcards || [];
+  const [i, setI] = useState(0);
+  const [flipped, setFlipped] = useState(false);
+  if (!cards.length) return <Modal topic={topic} tint={tint} onClose={onClose} title="Flashcards"><p>No flashcards yet.</p></Modal>;
+  const card = cards[i];
+  const prev = () => {setFlipped(false);setI((i - 1 + cards.length) % cards.length);};
+  const next = () => {setFlipped(false);setI((i + 1) % cards.length);};
+  return (
+    <Modal topic={topic} tint={tint} onClose={onClose} title={`Flashcards · ${topic.title}`}
+    footer={<>
+        <span className="modal-progress"><b>{i + 1}</b> of {cards.length}</span>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="btn" onClick={prev}>← Prev</button>
+          <button className="btn primary" onClick={next}>Next →</button>
+        </div>
+      </>}>
+      <div className={`flashcard ${flipped ? "flipped" : ""}`} onClick={() => setFlipped((f) => !f)}>
+        <div className="flashcard-inner">
+          <div className="flashcard-face front">
+            <div className="flashcard-term">{card.term}</div>
+            <div className="flashcard-hint">Click to flip</div>
+          </div>
+          <div className="flashcard-face back">
+            <div className="flashcard-def">{card.def}</div>
+            <div className="flashcard-hint">Click to flip back</div>
+          </div>
+        </div>
+      </div>
+    </Modal>);
+
+}
+
+// ---------- Quiz modal ----------
+function QuizModal({ topic, tint, onClose }) {
+  const qs = topic.mcqs || [];
+  const [i, setI] = useState(0);
+  const [picked, setPicked] = useState(null);
+  const [score, setScore] = useState(0);
+  const [finished, setFinished] = useState(false);
+
+  if (!qs.length) return <Modal topic={topic} tint={tint} onClose={onClose} title="Quiz"><p>No quiz questions yet.</p></Modal>;
+
+  if (finished) {
+    const pct = Math.round(score / qs.length * 100);
+    return (
+      <Modal topic={topic} tint={tint} onClose={onClose} title="Quiz complete"
+      footer={<>
+          <span className="modal-progress">Score saved</span>
+          <button className="btn primary" onClick={onClose}>Close</button>
+        </>}>
+        <div className="quiz-done">
+          <h3>{pct >= 80 ? "Smashed it!" : pct >= 50 ? "Nice work!" : "Keep going!"}</h3>
+          <p>You got <b>{score}</b> out of <b>{qs.length}</b></p>
+          <div className="quiz-score-big">{pct}%</div>
+        </div>
+      </Modal>);
+
+  }
+
+  const q = qs[i];
+  const pick = (idx) => {if (picked !== null) return;setPicked(idx);if (idx === q.answer) setScore((s) => s + 1);};
+  const next = () => {
+    if (i + 1 >= qs.length) setFinished(true);else
+    {setI(i + 1);setPicked(null);}
+  };
+
+  return (
+    <Modal topic={topic} tint={tint} onClose={onClose} title={`Quiz · ${topic.title}`}
+    footer={<>
+        <span className="modal-progress">Question <b>{i + 1}</b> of {qs.length} · Score <b>{score}</b></span>
+        <button className="btn primary" onClick={next} disabled={picked === null}>
+          {i + 1 >= qs.length ? "Finish" : "Next →"}
+        </button>
+      </>}>
+      <div className="quiz-q">{q.q}</div>
+      <div className="quiz-options">
+        {q.opts.map((opt, idx) => {
+          const cls = picked === null ? "" :
+          idx === q.answer ? "correct" :
+          idx === picked ? "wrong" : "disabled";
+          return (
+            <button key={idx} className={`quiz-opt ${cls}`} onClick={() => pick(idx)}>
+              <span className="quiz-letter">{String.fromCharCode(65 + idx)}</span>
+              <span>{opt}</span>
+            </button>);
+
+        })}
+      </div>
+      {picked !== null &&
+      <div className="quiz-explain">
+          <b>{picked === q.answer ? "Correct! " : "Not quite. "}</b>
+          {q.why}
+        </div>
+      }
+    </Modal>);
+
+}
+
+// ---------- Explain modal ----------
+function ExplainModal({ topic, tint, onClose }) {
+  const [text, setText] = useState("");
+  const [showModel, setShowModel] = useState(false);
+  return (
+    <Modal topic={topic} tint={tint} onClose={onClose} title={`Explain · ${topic.title}`}
+    footer={<>
+        <button className="btn" onClick={() => setShowModel((s) => !s)}>
+          {showModel ? "Hide model answer" : "Show model answer"}
+        </button>
+        <button className="btn primary" onClick={onClose}>Done</button>
+      </>}>
+      <div className="explain-prompt">{topic.explainPrompt || "Explain this topic in your own words."}</div>
+      <textarea
+        className="explain-input"
+        placeholder="Write your answer here…"
+        value={text}
+        onChange={(e) => setText(e.target.value)} />
+      
+      {showModel &&
+      <div className="explain-model">
+          <span className="explain-model-label">Model answer</span>
+          {topic.explainModel}
+        </div>
+      }
+    </Modal>);
+
+}
+
+// ---------- Study Notes (full-screen reader) ----------
+function SignalsDiagram() {
+  return (
+    <svg viewBox="0 0 360 120" width="360" height="120" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <text x="8" y="20" fontFamily="Nunito" fontWeight="800" fontSize="12" fill="#2A2344">DIGITAL</text>
+      <path d="M8 50 L40 50 L40 30 L80 30 L80 50 L120 50 L120 30 L160 30 L160 50 L170 50" stroke="#2A2344" strokeWidth="2.5" fill="none" strokeLinejoin="round" />
+      <text x="200" y="20" fontFamily="Nunito" fontWeight="800" fontSize="12" fill="#2A2344">ANALOGUE</text>
+      <path d="M200 50 Q220 10 240 50 Q260 90 280 50 Q300 10 320 50 Q340 70 352 50" stroke="#E0466A" strokeWidth="2.5" fill="none" />
+      <line x1="8" y1="50" x2="352" y2="50" stroke="#B5AECB" strokeWidth="1" strokeDasharray="3 3" />
+      <text x="8" y="108" fontFamily="Nunito" fontWeight="700" fontSize="11" fill="#7C749A">ON/OFF only — e.g. a button</text>
+      <text x="200" y="108" fontFamily="Nunito" fontWeight="700" fontSize="11" fill="#7C749A">Any value — e.g. a sensor reading</text>
+    </svg>);
+
+}
+function IODiagram() {
+  return (
+    <svg viewBox="0 0 400 140" width="400" height="140" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="20" y="40" width="90" height="60" rx="10" fill="#A7D9F5" stroke="#2A2344" strokeWidth="2" />
+      <text x="65" y="75" textAnchor="middle" fontFamily="Fraunces" fontWeight="600" fontSize="14" fill="#2A2344">INPUT</text>
+      <text x="65" y="92" textAnchor="middle" fontFamily="Nunito" fontWeight="700" fontSize="10" fill="#2A2344">sensor / switch</text>
+      <rect x="155" y="40" width="90" height="60" rx="10" fill="#FFE58A" stroke="#2A2344" strokeWidth="2" />
+      <text x="200" y="75" textAnchor="middle" fontFamily="Fraunces" fontWeight="600" fontSize="14" fill="#2A2344">PROCESS</text>
+      <text x="200" y="92" textAnchor="middle" fontFamily="Nunito" fontWeight="700" fontSize="10" fill="#2A2344">microcontroller</text>
+      <rect x="290" y="40" width="90" height="60" rx="10" fill="#A5E6C3" stroke="#2A2344" strokeWidth="2" />
+      <text x="335" y="75" textAnchor="middle" fontFamily="Fraunces" fontWeight="600" fontSize="14" fill="#2A2344">OUTPUT</text>
+      <text x="335" y="92" textAnchor="middle" fontFamily="Nunito" fontWeight="700" fontSize="10" fill="#2A2344">LED / motor</text>
+      <path d="M110 70 L150 70 M245 70 L285 70" stroke="#2A2344" strokeWidth="2.5" />
+      <path d="M145 70 l-8 -5 v10 z M280 70 l-8 -5 v10 z" fill="#2A2344" />
+    </svg>);
+
+}
+
+function Keyword({ term, def }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <button className="kw" onClick={() => setOpen((o) => !o)}>
+      <span className="kw-term">{term}</span>
+      {open && <span className="kw-def">{def}</span>}
+    </button>);
+
+}
+
+function InlineMCQ({ block }) {
+  const [picked, setPicked] = useState(null);
+  const correct = block.answer;
+  return (
+    <div className={`inline-mcq ${picked !== null ? picked === correct ? "is-correct" : "is-wrong" : ""}`}>
+      <div className="inline-mcq-head">
+        <span className="inline-mcq-tag">Quick check</span>
+        <span className="inline-mcq-q">{block.q}</span>
+      </div>
+      <div className="inline-mcq-opts">
+        {block.opts.map((o, i) => {
+          const locked = picked !== null;
+          const isPicked = picked === i;
+          const isCorrect = i === correct;
+          let cls = "inline-mcq-opt";
+          if (locked && isCorrect) cls += " correct";
+          if (locked && isPicked && !isCorrect) cls += " wrong";
+          return (
+            <button
+              key={i}
+              className={cls}
+              disabled={locked}
+              onClick={() => setPicked(i)}>
+              
+              <span className="inline-mcq-letter">{String.fromCharCode(65 + i)}</span>
+              <span>{o}</span>
+              {locked && isCorrect && <span className="inline-mcq-mark">✓</span>}
+              {locked && isPicked && !isCorrect && <span className="inline-mcq-mark">✗</span>}
+            </button>);
+
+        })}
+      </div>
+      {picked !== null &&
+      <div className="inline-mcq-why">
+          <strong>{picked === correct ? "Nailed it. " : "Not quite. "}</strong>
+          {block.why}
+          {picked !== correct &&
+        <button className="inline-mcq-retry" onClick={() => setPicked(null)}>Try again</button>
+        }
+        </div>
+      }
+    </div>);
+
+}
+
+function InlineExplain({ block }) {
+  const [text, setText] = useState("");
+  const [feedback, setFeedback] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const submit = async () => {
+    if (!text.trim() || loading) return;
+    setLoading(true);
+    setFeedback("");
+    try {
+      const prompt = `You are a friendly GCSE Design & Technology tutor. The student has been asked: "${block.prompt}". Their answer: "${text}". Give short, encouraging feedback (2–3 sentences max). Say one thing they got right and one thing to add or improve. Use plain language for a 14-year-old. Do not repeat the question.`;
+      const reply = await window.claude.complete(prompt);
+      setFeedback(reply);
+    } catch (e) {
+      setFeedback("Couldn't get feedback right now — give it another go in a sec.");
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div className="inline-explain">
+      <div className="inline-explain-head">
+        <span className="inline-explain-tag">💬 Explain it</span>
+        <span className="inline-explain-q">{block.prompt}</span>
+      </div>
+      {block.hint && <div className="inline-explain-hint">Hint: {block.hint}</div>}
+      <textarea
+        className="inline-explain-input"
+        placeholder="Write your answer in your own words…"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={4} />
+      
+      <div className="inline-explain-actions">
+        <span className="inline-explain-count">{text.length} chars</span>
+        <button className="btn primary" onClick={submit} disabled={!text.trim() || loading}>
+          {loading ? "Checking…" : "Check my answer"}
+        </button>
+      </div>
+      {feedback &&
+      <div className="inline-explain-feedback">
+          <div className="inline-explain-feedback-label">Tutor feedback</div>
+          <div className="inline-explain-feedback-text">{feedback}</div>
+        </div>
+      }
+    </div>);
+
+}
+
+function NotesBlock({ block }) {
+  if (block.type === "p") return <p>{block.text}</p>;
+  if (block.type === "keyword") return <Keyword term={block.term} def={block.def} />;
+  if (block.type === "mcq") return <InlineMCQ block={block} />;
+  if (block.type === "explain") return <InlineExplain block={block} />;
+  if (block.type === "tip") {
+    const tone = block.tone || "lemon";
+    const icon = tone === "coral" ? "💭" : "💡";
+    return (
+      <div className={`callout ${tone === "coral" ? "coral" : ""}`}>
+        <div className="callout-icon">{icon}</div>
+        <div className="callout-body">
+          <span className="callout-label">{block.label}</span>
+          <span className="callout-text">{block.text}</span>
+        </div>
+      </div>);
+
+  }
+  if (block.type === "diagram") {
+    return (
+      <div className="diagram">
+        {block.kind === "signals" ? <SignalsDiagram /> : <IODiagram />}
+      </div>);
+
+  }
+  return null;
+}
+
+function StudyNotes({ topic, tint, onClose, onLaunch }) {
+  const tintVar = { mint: "var(--mint)", peach: "var(--peach)", sky: "var(--sky)", lilac: "var(--lilac)", lemon: "var(--lemon)", coral: "var(--coral)", teal: "var(--teal)" }[tint] || "var(--peach)";
+  const deepVar = { mint: "var(--mint-deep)", peach: "var(--peach-deep)", sky: "var(--sky-deep)", lilac: "var(--lilac-deep)", lemon: "var(--lemon-deep)", coral: "var(--coral-deep)", teal: "var(--teal-deep)" }[tint] || "var(--peach-deep)";
+
+  const LSK = `notes_read_${topic.code}`;
+  const [read, setRead] = useState(() => {
+    try {return JSON.parse(localStorage.getItem(LSK)) || {};} catch {return {};}
+  });
+  useEffect(() => {localStorage.setItem(LSK, JSON.stringify(read));}, [read, LSK]);
+
+  const sections = topic.sections || [];
+  const doneCount = sections.filter((s) => read[s.id]).length;
+  const pct = sections.length ? Math.round(doneCount / sections.length * 100) : 0;
+
+  useEffect(() => {
+    const onKey = (e) => {if (e.key === "Escape") onClose();};
+    window.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => {window.removeEventListener("keydown", onKey);document.body.style.overflow = "";};
+  }, [onClose]);
+
+  const toggle = (id) => setRead((r) => ({ ...r, [id]: !r[id] }));
+  const section = topic.section === "core" ? "Core" : "Systems";
+
+  return (
+    <div className="notes-overlay" style={{ "--card-tint": tintVar, "--card-deep": deepVar }}>
+      <div className="notes-bar">
+        <span className="card-code">{topic.code}</span>
+        <span className="notes-bar-title">{topic.title}</span>
+        <div className="notes-bar-progress">
+          <div className="progress-track"><div className="progress-fill" style={{ width: pct + "%" }} /></div>
+          <span className="pct">{pct}%</span>
+        </div>
+        <button className="modal-close" onClick={onClose} aria-label="close">✕</button>
+      </div>
+
+      <div className="notes-layout">
+        <aside className="notes-toc">
+          <div className="notes-toc-label">In this topic</div>
+          <ol>
+            {sections.map((s, i) =>
+            <li key={s.id}>
+                <a
+                href={`#sec-${s.id}`}
+                className={read[s.id] ? "done" : ""}
+                onClick={(e) => {
+                  e.preventDefault();
+                  const el = document.getElementById(`sec-${s.id}`);
+                  if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+                }}>
+                {s.title}</a>
+              </li>
+            )}
+          </ol>
+        </aside>
+
+        <main className="notes-main">
+          <div className="notes-hero">
+            <span className="notes-hero-tag">{section} · Topic {topic.code}</span>
+            <div className="notes-hero-number">{topic.code}</div>
+            <h1 className="notes-hero-title">{topic.title}</h1>
+            <p className="notes-hero-intro">{topic.intro}</p>
+            <div className="notes-objectives">
+              <div className="notes-objectives-label">What you'll learn</div>
+              <ul>
+                {(topic.objectives || []).map((o, i) => <li key={i}>{o}</li>)}
+              </ul>
+            </div>
+          </div>
+
+          {sections.map((s, i) =>
+          <section key={s.id} id={`sec-${s.id}`} className="notes-section">
+              <h3 data-num={i + 1}>{s.title}</h3>
+              {(s.body || []).map((b, j) => <NotesBlock key={j} block={b} />)}
+              <button
+              className={`mark-read ${read[s.id] ? "done" : ""}`}
+              onClick={() => toggle(s.id)}>
+              
+                <span className="check">{read[s.id] ? "✓" : ""}</span>
+                <span>{read[s.id] ? "Read — nice one!" : "Mark this section as read"}</span>
+              </button>
+            </section>
+          )}
+
+          <div className="notes-cta">
+            <h4>{pct === 100 ? "All read — smash a quiz?" : "Ready to test yourself?"}</h4>
+            <p>Lock it in with flashcards, a quick quiz, or an explain-it prompt.</p>
+            <div className="notes-cta-actions">
+              <button className="btn" onClick={() => onLaunch("flashcards")}>🃏 Flashcards</button>
+              <button className="btn primary" onClick={() => onLaunch("mcq")}>✏️ Take the quiz</button>
+              <button className="btn" onClick={() => onLaunch("explain")}>💬 Explain</button>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>);
+
+}
+
+// ---------- App ----------
+function App() {
+  const auth = window.useAuth();
+  const [progress, setProgress] = useState(loadProgress);
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState("all");
+  const [modal, setModal] = useState(null); // { topic, mode, tint }
+  const [view, setView] = useState("home"); // home | profile
+  const [showSignIn, setShowSignIn] = useState(false);
+
+  const topics = window.TOPICS || [];
+
+  // apply saved theme on boot
+  useEffect(() => {
+    const t = localStorage.getItem("dt_revision_theme_v1") || "light";
+    document.documentElement.dataset.theme = t;
+  }, []);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return topics.filter((t) => {
+      if (filter === "core" && t.section !== "core") return false;
+      if (filter === "systems" && t.section !== "systems") return false;
+      if (filter === "todo" && topicPercent(progress[t.code]) === 100) return false;
+      if (q && !t.title.toLowerCase().includes(q) && !t.code.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [topics, query, filter, progress]);
+
+  const core = filtered.filter((t) => t.section === "core");
+  const systems = filtered.filter((t) => t.section === "systems");
+
+  const coreTotal = topics.filter((t) => t.section === "core").length;
+  const sysTotal = topics.filter((t) => t.section === "systems").length;
+  const coreDone = topics.filter((t) => t.section === "core" && topicPercent(progress[t.code]) === 100).length;
+  const sysDone = topics.filter((t) => t.section === "systems" && topicPercent(progress[t.code]) === 100).length;
+
+  const overall = useMemo(() => {
+    if (!topics.length) return 0;
+    const total = topics.reduce((s, t) => s + topicPercent(progress[t.code]), 0);
+    return Math.round(total / topics.length);
+  }, [topics, progress]);
+
+  // If on profile view (signed in only)
+  if (view === "profile" && auth.user) {
+    return (
+      <>
+        <window.ProfilePage
+          user={auth.user}
+          topics={topics}
+          progress={progress}
+          onUpdate={auth.update}
+          onSignOut={() => {auth.signOut();setView("home");}}
+          onBack={() => setView("home")}
+          onResetProgress={() => {localStorage.removeItem(LS_KEY);setProgress({});setView("home");}} />
+        
+        <window.FloatingAuthButton
+          user={auth.user}
+          onSignInClick={() => setShowSignIn(true)}
+          onProfileClick={() => setView("home")} />
+        
+        {showSignIn && <window.SignInPage onSignIn={(u) => {auth.signIn(u);setShowSignIn(false);}} onClose={() => setShowSignIn(false)} />}
+      </>);
+
+  }
+
+  // Remove the early-return signin gate — signin is now a modal launched by the FAB.
+
+  const handleOpen = (t, mode) => {
+    // find index to determine tint (same logic as in lists below)
+    const list = topics.filter((x) => x.section === t.section);
+    const baseIndex = list.findIndex((x) => x.code === t.code);
+    const offset = t.section === "systems" ? 3 : 0;
+    const tint = tintFor(baseIndex + offset);
+    setModal({ topic: t, mode, tint });
+  };
+
+  return (
+    <div className="page">
+      <Hero overall={overall} coreDone={coreDone} coreTotal={coreTotal} sysDone={sysDone} sysTotal={sysTotal} user={auth.user} />
+
+      <div className="tools-row">
+        <label className="search">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <circle cx="11" cy="11" r="7" />
+            <path d="m20 20-3.5-3.5" />
+          </svg>
+          <input
+            type="text"
+            placeholder="Search topics or key words…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)} />
+          
+        </label>
+        <div className="chips">
+          <button className={`chip ${filter === "all" ? "active" : ""}`} onClick={() => setFilter("all")}>All</button>
+          <button className={`chip ${filter === "core" ? "active" : ""}`} onClick={() => setFilter("core")}>Core</button>
+          <button className={`chip ${filter === "systems" ? "active" : ""}`} onClick={() => setFilter("systems")}>Systems</button>
+          <button className={`chip ${filter === "todo" ? "active" : ""}`} onClick={() => setFilter("todo")}>To do</button>
+        </div>
+      </div>
+
+      {core.length > 0 &&
+      <section>
+          <div className="section-head">
+            <span className="section-tag tag-core">Core</span>
+            <h2>The basics — everyone does these</h2>
+            <span className="section-count"><b>{coreDone}</b>/{core.length} done</span>
+          </div>
+          <div className="grid">
+            {core.map((t, i) =>
+          <TopicCard key={t.code} topic={t} entry={progress[t.code]} index={i} onOpen={handleOpen} />
+          )}
+          </div>
+        </section>
+      }
+
+      {systems.length > 0 &&
+      <section>
+          <div className="section-head">
+            <span className="section-tag tag-sys">Systems</span>
+            <h2>Your specialism — electronics &amp; PCBs</h2>
+            <span className="section-count"><b>{sysDone}</b>/{systems.length} done</span>
+          </div>
+          <div className="grid">
+            {systems.map((t, i) =>
+          <TopicCard key={t.code} topic={t} entry={progress[t.code]} index={i + 3} onOpen={handleOpen} />
+          )}
+          </div>
+        </section>
+      }
+
+      {filtered.length === 0 &&
+      <div className="empty">
+          <h3 className="empty-title">No topics match that search 🔍</h3>
+          <p style={{ color: "var(--ink-3)", margin: 0 }}>Try clearing the search or switching filter.</p>
+        </div>
+      }
+
+      <footer className="foot">
+        Progress saved right here in your browser <span className="heart">♥</span> No sign-in needed.
+      </footer>
+
+      <nav className="vswitch">
+        <a href="v1.html">v1 · paper</a>
+        <a href="v2.html" className="active">v2 · club</a>
+      </nav>
+
+      {modal && modal.mode === "flashcards" &&
+      <FlashcardsModal topic={modal.topic} tint={modal.tint} onClose={() => setModal(null)} />
+      }
+      {modal && modal.mode === "mcq" &&
+      <QuizModal topic={modal.topic} tint={modal.tint} onClose={() => setModal(null)} />
+      }
+      {modal && modal.mode === "explain" &&
+      <ExplainModal topic={modal.topic} tint={modal.tint} onClose={() => setModal(null)} />
+      }
+      {modal && modal.mode === "notes" &&
+      <StudyNotes
+        topic={modal.topic}
+        tint={modal.tint}
+        onClose={() => setModal(null)}
+        onLaunch={(mode) => setModal({ ...modal, mode })} />
+
+      }
+
+      <window.FloatingAuthButton
+        user={auth.user}
+        onSignInClick={() => setShowSignIn(true)}
+        onProfileClick={() => setView("profile")} />
+      
+
+      {showSignIn &&
+      <window.SignInPage
+        onSignIn={(u) => {auth.signIn(u);setShowSignIn(false);}}
+        onClose={() => setShowSignIn(false)} />
+
+      }
+    </div>);
+
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
