@@ -1,3 +1,4 @@
+import * as React from "react"
 import type { Activity } from "@/lib/content"
 import { sanitiseHtml } from "@/lib/html"
 import { markdownToSafeHtml } from "@/lib/markdown"
@@ -197,7 +198,9 @@ export async function StudyNotes({ topic, sections, tint, launcher }: Props) {
               <p>This topic doesn&apos;t have study notes populated. Try flashcards or quiz.</p>
             </div>
           ) : (
-            sectionNodes
+            sectionNodes.map((node, i) => (
+              <React.Fragment key={sections[i].id}>{node}</React.Fragment>
+            ))
           )}
 
           <div className="notes-cta">
