@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import "./styles-v2.css"
+import { FloatingAuthButton } from "@/components/FloatingAuthButton"
 
 export const metadata: Metadata = {
   title: "dt.mr-salih.uk — iGCSE D&T Systems",
@@ -17,7 +18,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT@0,9..144,500..700,50..100;1,9..144,500..700,50..100&family=Nunito:wght@500;700;800&display=swap"
         />
       </head>
-      <body>{children}</body>
+      <body>
+        {children}
+        <FloatingAuthButton />
+      </body>
     </html>
   )
 }
