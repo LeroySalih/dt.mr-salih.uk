@@ -88,8 +88,7 @@ export function groupIntoPanels(activities: Activity[]): ActivityPanel[] {
 
   const flushDisplaySection = () => {
     if (!currentPanel) return
-    currentPanel.sections = groupIntoSections(pendingInner)
-    panels.push(currentPanel)
+    panels.push({ ...currentPanel, sections: groupIntoSections(pendingInner) })
     currentPanel = null
     pendingInner = []
   }
