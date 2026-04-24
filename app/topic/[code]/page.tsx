@@ -5,12 +5,14 @@ import { tintFor } from "@/lib/tints"
 import { TopicLauncher } from "@/components/TopicLauncher"
 import { parseFlashcardLines } from "@/lib/flashcards/parse-flashcards"
 import { type QuizQuestion } from "@/components/modals/QuizModal"
+import { type ExplainPrompt } from "@/components/modals/ExplainModal"
 import { StudyNotes, groupIntoSections } from "@/components/notes/StudyNotes"
 
 export const dynamic = "force-dynamic"
 
 type BodyData = { flashcardActivityId?: string; lines?: string }
 type McqBody = { question?: string; options?: Array<{ id: string; text: string }>; correctOptionId?: string }
+type ShortTextBody = { question?: string; modelAnswer?: string }
 
 function findFlashcards(activities: Activity[]): { doActivityId: string; deckActivityId: string; lines: string } | null {
   const doFc = activities.find((a) => a.type === "do-flashcards")
@@ -41,6 +43,21 @@ function extractQuizQuestions(activities: Activity[]): QuizQuestion[] {
     .filter((q): q is QuizQuestion => q !== null)
 }
 
+function extractExplainPrompts(activities: Activity[]): ExplainPrompt[] {
+  return activities
+    .filter((a) => a.type === "short-text-question")
+    .map((a) => {
+      const b = (a.bodyData ?? {}) as ShortTextBody
+      if (!b.question) return null
+      return {
+        activityId: a.activityId,
+        question: b.question,
+        modelAnswer: b.modelAnswer ?? "",
+      }
+    })
+    .filter((p): p is ExplainPrompt => p !== null)
+}
+
 export default async function TopicPage({ params, searchParams }: {
   params: Promise<{ code: string }>
   searchParams: Promise<{ mode?: string }>
@@ -63,6 +80,7 @@ export default async function TopicPage({ params, searchParams }: {
   const fc = findFlashcards(topic.activities)
   const cards = fc ? parseFlashcardLines(fc.lines) : []
   const quizQuestions = extractQuizQuestions(topic.activities)
+  const explainPrompts = extractExplainPrompts(topic.activities)
   const sections = groupIntoSections(topic.activities)
 
   const launcher = (
@@ -72,6 +90,7 @@ export default async function TopicPage({ params, searchParams }: {
       signedIn={signedIn}
       flashcards={fc ? { ...fc, cards } : null}
       quizQuestions={quizQuestions}
+      explainPrompts={explainPrompts}
       initialMode={mode ?? null}
     />
   )

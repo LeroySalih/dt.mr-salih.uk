@@ -3,6 +3,7 @@ import { z } from "zod"
 import { query } from "@/lib/db"
 import { getAuthenticatedProfile } from "@/lib/auth"
 import { insertSubmission } from "@/lib/submissions"
+import { enqueueShortTextMarking } from "@/lib/ai-marking"
 
 const Body = z.object({
   type: z.enum(["multiple-choice-question", "short-text-question"]),
@@ -34,6 +35,15 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     userId: profile.userId,
     body: parsed.data.body,
   })
+
+  if (parsed.data.type === "short-text-question") {
+    try {
+      await enqueueShortTextMarking({ submissionId, activityId })
+    } catch (e) {
+      console.error("[submissions] Failed to enqueue for AI marking", e)
+      // Don't fail the submission — the pupil's answer is saved; marking is async anyway
+    }
+  }
 
   return NextResponse.json({ success: true, submissionId })
 }

@@ -2,6 +2,7 @@
 import * as React from "react"
 import { FlashcardsModal } from "@/components/modals/FlashcardsModal"
 import { QuizModal, type QuizQuestion } from "@/components/modals/QuizModal"
+import { ExplainModal, type ExplainPrompt } from "@/components/modals/ExplainModal"
 import type { FlashCard } from "@/lib/flashcards/parse-flashcards"
 
 type Props = {
@@ -11,9 +12,10 @@ type Props = {
   flashcards: { doActivityId: string; deckActivityId: string; lines: string; cards: FlashCard[] } | null
   initialMode: string | null
   quizQuestions: QuizQuestion[] | null
+  explainPrompts: ExplainPrompt[]
 }
 
-export function TopicLauncher({ topic, tint, signedIn, flashcards, initialMode, quizQuestions }: Props) {
+export function TopicLauncher({ topic, tint, signedIn, flashcards, initialMode, quizQuestions, explainPrompts }: Props) {
   const [mode, setMode] = React.useState<"none" | "flashcards" | "quiz" | "explain">(
     initialMode === "flashcards" || initialMode === "quiz" || initialMode === "explain"
       ? (initialMode as "flashcards" | "quiz" | "explain")
@@ -24,13 +26,18 @@ export function TopicLauncher({ topic, tint, signedIn, flashcards, initialMode, 
   // practise but nothing persists — skip session creation.
   const canFlashcard = !!flashcards && flashcards.cards.length > 0
   const canQuiz = !!quizQuestions && quizQuestions.length > 0
+  const canExplain = signedIn && explainPrompts.length > 0
 
   return (
     <>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <button className="btn primary" disabled={!canFlashcard} onClick={() => setMode("flashcards")}>🃏 Flashcards ({flashcards?.cards.length ?? 0})</button>
         <button className="btn primary" disabled={!canQuiz} onClick={() => setMode("quiz")}>✏️ Quiz ({quizQuestions?.length ?? 0})</button>
-        {signedIn && <button className="btn" disabled title="Explain coming soon">💬 Explain</button>}
+        {signedIn && (
+          <button className="btn" disabled={!canExplain} onClick={() => setMode("explain")}>
+            💬 Explain ({explainPrompts.length})
+          </button>
+        )}
       </div>
 
       {mode === "flashcards" && flashcards && signedIn && (
@@ -56,6 +63,16 @@ export function TopicLauncher({ topic, tint, signedIn, flashcards, initialMode, 
           tint={tint}
           questions={quizQuestions!}
           signedIn={signedIn}
+          onClose={() => setMode("none")}
+        />
+      )}
+
+      {mode === "explain" && canExplain && (
+        <ExplainModal
+          topicCode={topic.code}
+          topicTitle={topic.title}
+          tint={tint}
+          prompts={explainPrompts}
           onClose={() => setMode("none")}
         />
       )}
