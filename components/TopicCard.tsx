@@ -38,7 +38,7 @@ export function TopicCard({ code, title, rawTitle, vocabCount, index, pct, done,
           <span>{signedIn ? "3 ways to study" : "2 ways to study"}</span>
         </div>
         <Link href={`/topic/${slug}`} className="notes-row">
-          <span className="notes-label">Open study notes →</span>
+          <span className="notes-label">Study Notes →</span>
           <span className="progress-row inline">
             <span className="progress-track"><span className="progress-fill" style={{ width: pct + "%" }} /></span>
             <span className="progress-pct">{pct}%</span>
