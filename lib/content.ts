@@ -146,6 +146,7 @@ export type ActivityType =
   | "file-download"
   | "upload-file"
   | "text-question"
+  | "display-section"
 
 export const ALLOWED_ACTIVITY_TYPES: readonly ActivityType[] = [
   "text",
@@ -159,6 +160,7 @@ export const ALLOWED_ACTIVITY_TYPES: readonly ActivityType[] = [
   "file-download",
   "upload-file",
   "text-question",
+  "display-section",
 ]
 
 export type Activity = {
