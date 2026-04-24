@@ -19,7 +19,7 @@ export default async function ProfilePage() {
   )
   const classCodes = groupRows.map((r) => r.join_code).filter((c): c is string => !!c)
 
-  const topics = await listTopics()
+  const topics = await listTopics(profile.userId)
   const progress = await computeTopicProgress({
     pupilId: profile.userId,
     lessonIds: topics.map((t) => t.lessonId),

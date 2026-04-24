@@ -65,11 +65,11 @@ export default async function TopicPage({ params, searchParams }: {
   const { code } = await params
   const { mode } = await searchParams
 
-  const topic = await getTopicByCode(decodeURIComponent(code))
-  if (!topic) notFound()
-
   const profile = await getAuthenticatedProfile()
   const signedIn = Boolean(profile)
+
+  const topic = await getTopicByCode(decodeURIComponent(code), profile?.userId)
+  if (!topic) notFound()
 
   const parts = topic.code.split(".")
   const minorRaw = parts[1] ? parseInt(parts[1], 10) : 0

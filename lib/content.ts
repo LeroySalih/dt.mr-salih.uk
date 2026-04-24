@@ -39,9 +39,48 @@ type Row = {
   vocab_count: number
 }
 
-export async function listTopics(): Promise<TopicSummary[]> {
-  const all = allUnitIds()
-  if (all.length === 0) return []
+/**
+ * Return the unit_ids a given pupil has been assigned via any of their groups.
+ * Intersected at call sites with the env-configured allowlist so a pupil only
+ * ever sees units that are both (a) assigned to them and (b) part of the site's
+ * configured CORE/SYSTEMS universe.
+ */
+export async function assignedUnitIdsForPupil(pupilId: string): Promise<string[]> {
+  const { rows } = await query<{ unit_id: string }>(
+    `
+      select distinct a.unit_id
+      from assignments a
+      join group_membership gm on gm.group_id = a.group_id
+      where gm.user_id = $1
+        and coalesce(a.active, true) = true
+    `,
+    [pupilId],
+  )
+  return rows.map((r) => r.unit_id)
+}
+
+/**
+ * Topics visible on the site.
+ *
+ * - Anonymous (pupilId omitted): all lessons under the env-configured
+ *   CORE_UNIT_IDS + SYSTEMS_UNIT_IDS units.
+ * - Signed-in (pupilId given): lessons under the intersection of the env list
+ *   AND the units assigned to the pupil via group_membership + assignments.
+ *   If the pupil has no matching assignments, returns an empty array.
+ *
+ * Lessons whose title matches /assessment/i are excluded either way.
+ */
+export async function listTopics(pupilId?: string): Promise<TopicSummary[]> {
+  const envAll = allUnitIds()
+  if (envAll.length === 0) return []
+
+  let effectiveUnitIds = envAll
+  if (pupilId) {
+    const assigned = new Set(await assignedUnitIdsForPupil(pupilId))
+    effectiveUnitIds = envAll.filter((id) => assigned.has(id))
+    if (effectiveUnitIds.length === 0) return []
+  }
+
   const systemsSet = new Set(systemsUnitIds())
 
   const { rows } = await query<Row>(
@@ -76,7 +115,7 @@ export async function listTopics(): Promise<TopicSummary[]> {
         and coalesce(l.title, '') !~* 'assessment'
       order by u.unit_id, l.order_by nulls last, l.title
     `,
-    [all],
+    [effectiveUnitIds],
   )
 
   return rows.map((row) => {
@@ -134,8 +173,8 @@ export type TopicDetail = TopicSummary & {
   activities: Activity[]
 }
 
-export async function getTopicByCode(code: string): Promise<TopicDetail | null> {
-  const topics = await listTopics()
+export async function getTopicByCode(code: string, pupilId?: string): Promise<TopicDetail | null> {
+  const topics = await listTopics(pupilId)
   const summary = topics.find((t) => t.code === code)
   if (!summary) return null
 

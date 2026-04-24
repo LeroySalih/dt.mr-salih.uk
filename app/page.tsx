@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic"
 
 export default async function HomePage() {
   const profile = await getAuthenticatedProfile()
-  const topics = await listTopics()
+  const topics = await listTopics(profile?.userId)
   const progress = profile
     ? await computeTopicProgress({ pupilId: profile.userId, lessonIds: topics.map((t) => t.lessonId) })
     : {}

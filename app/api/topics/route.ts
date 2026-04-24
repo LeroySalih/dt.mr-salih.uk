@@ -4,8 +4,8 @@ import { computeTopicProgress } from "@/lib/progress"
 import { getAuthenticatedProfile } from "@/lib/auth"
 
 export async function GET() {
-  const topics = await listTopics()
   const profile = await getAuthenticatedProfile()
+  const topics = await listTopics(profile?.userId)
 
   let progress: Awaited<ReturnType<typeof computeTopicProgress>> = {}
   if (profile) {
