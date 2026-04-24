@@ -83,3 +83,4 @@ See `docs/superpowers/plans/2026-04-23-dt-mr-salih-uk.md` — "Deferred" section
 - `display-image.body_data.fileUrl` with bare filenames (no `http://`) render as a placeholder caption — resolution against a CDN is TODO.
 - No anonymous → signed-in progress migration; local progress is discarded on sign-in (by design).
 - No sign-up / password reset (accounts are provisioned through planner-004).
+# dt.mr-salih.uk
