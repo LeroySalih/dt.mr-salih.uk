@@ -28,6 +28,8 @@
 
 # misc
 .DS_Store
+.npm-cache/
+*.zip
 *.pem
 *.log
 
