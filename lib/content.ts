@@ -14,9 +14,22 @@ export type TopicSummary = {
   vocabCount: number
 }
 
-const CORE_UNIT_IDS = ["1001-CORE-1", "1003-CORE-2", "CORE-3-10"] as const
-const SYSTEMS_UNIT_IDS = ["1010-SYSTEMS-1"] as const
-const ALL_UNIT_IDS = [...CORE_UNIT_IDS, ...SYSTEMS_UNIT_IDS]
+function parseIds(raw: string | undefined): string[] {
+  if (!raw) return []
+  return raw.split(",").map((s) => s.trim()).filter((s) => s.length > 0)
+}
+
+function coreUnitIds(): string[] {
+  return parseIds(process.env.CORE_UNIT_IDS)
+}
+
+function systemsUnitIds(): string[] {
+  return parseIds(process.env.SYSTEMS_UNIT_IDS)
+}
+
+function allUnitIds(): string[] {
+  return [...coreUnitIds(), ...systemsUnitIds()]
+}
 
 type Row = {
   lesson_id: string
@@ -27,6 +40,10 @@ type Row = {
 }
 
 export async function listTopics(): Promise<TopicSummary[]> {
+  const all = allUnitIds()
+  if (all.length === 0) return []
+  const systemsSet = new Set(systemsUnitIds())
+
   const { rows } = await query<Row>(
     `
       select
@@ -59,12 +76,12 @@ export async function listTopics(): Promise<TopicSummary[]> {
         and coalesce(l.title, '') !~* 'assessment'
       order by u.unit_id, l.order_by nulls last, l.title
     `,
-    [ALL_UNIT_IDS],
+    [all],
   )
 
   return rows.map((row) => {
     const parsed = parseTopicCode(row.lesson_title) ?? { code: "", title: "" }
-    const section: TopicSection = row.unit_id === "1010-SYSTEMS-1" ? "systems" : "core"
+    const section: TopicSection = systemsSet.has(row.unit_id) ? "systems" : "core"
     return {
       code: parsed.code,
       title: parsed.title,
