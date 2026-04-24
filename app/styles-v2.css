@@ -465,6 +465,9 @@ button { font-family: inherit; cursor: pointer; color: inherit; }
   width: 100%;
   text-align: left;
   color: var(--ink);
+  overflow: hidden;
+  text-decoration: none;
+  box-sizing: border-box;
 }
 .notes-row:hover {
   background: var(--card-tint);
@@ -477,6 +480,10 @@ button { font-family: inherit; cursor: pointer; color: inherit; }
   font-size: 13.5px;
   color: var(--ink);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex-shrink: 1;
 }
 .progress-row.inline {
   flex: 1;
@@ -504,8 +511,9 @@ button { font-family: inherit; cursor: pointer; color: inherit; }
   font-weight: 700;
   font-size: 14px;
   color: var(--ink);
-  min-width: 38px;
+  min-width: 32px;
   text-align: right;
+  flex-shrink: 0;
 }
 
 /* ---------- Modal ---------- */
