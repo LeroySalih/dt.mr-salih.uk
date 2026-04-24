@@ -91,6 +91,7 @@ export function TopicGrid({ initial }: {
                 title={t.title}
                 rawTitle={t.rawTitle}
                 section="core"
+                lessonId={t.lessonId}
                 vocabCount={t.vocabCount}
                 index={i}
                 pct={pctFor(t)}
@@ -117,6 +118,7 @@ export function TopicGrid({ initial }: {
                 title={t.title}
                 rawTitle={t.rawTitle}
                 section="systems"
+                lessonId={t.lessonId}
                 vocabCount={t.vocabCount}
                 index={i + 3}
                 pct={pctFor(t)}

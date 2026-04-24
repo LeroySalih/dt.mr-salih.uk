@@ -175,9 +175,9 @@ export type TopicDetail = TopicSummary & {
   activities: Activity[]
 }
 
-export async function getTopicByCode(code: string, pupilId?: string): Promise<TopicDetail | null> {
+export async function getTopicByLessonId(lessonId: string, pupilId?: string): Promise<TopicDetail | null> {
   const topics = await listTopics(pupilId)
-  const summary = topics.find((t) => t.code === code)
+  const summary = topics.find((t) => t.lessonId === lessonId)
   if (!summary) return null
 
   const { rows } = await query<{

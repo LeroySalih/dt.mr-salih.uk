@@ -7,6 +7,7 @@ export type TopicCardProps = {
   title: string
   rawTitle: string
   section: "core" | "systems"
+  lessonId: string
   vocabCount: number
   index: number
   pct: number
@@ -14,12 +15,9 @@ export type TopicCardProps = {
   signedIn: boolean
 }
 
-export function TopicCard({ code, title, rawTitle, vocabCount, index, pct, done, signedIn }: TopicCardProps) {
+export function TopicCard({ code, title, rawTitle, lessonId, vocabCount, index, pct, done, signedIn }: TopicCardProps) {
   const tint = tintFor(index)
   const iconKey = iconForCode(code)
-  // Build URL slug — use code if present, else fall back to lessonId via rawTitle?
-  // For now, use code when available; topic page will need to handle both.
-  const slug = code || encodeURIComponent(rawTitle)
   const displayTitle = title || rawTitle || "(untitled)"
   return (
     <article data-tint={tint} className={`card tint-${tint} ${done ? "card-done" : ""}`}>
@@ -37,7 +35,7 @@ export function TopicCard({ code, title, rawTitle, vocabCount, index, pct, done,
           <span className="dot" />
           <span>{signedIn ? "3 ways to study" : "2 ways to study"}</span>
         </div>
-        <Link href={`/topic/${slug}`} className="notes-row">
+        <Link href={`/topic/${lessonId}`} className="notes-row">
           <span className="notes-label">Study Notes →</span>
           <span className="progress-row inline">
             <span className="progress-track"><span className="progress-fill" style={{ width: pct + "%" }} /></span>
@@ -45,10 +43,10 @@ export function TopicCard({ code, title, rawTitle, vocabCount, index, pct, done,
           </span>
         </Link>
         <div className="card-actions">
-          <Link href={`/topic/${slug}?mode=flashcards`} className="act"><span className="act-icon">🃏</span>Flashcards</Link>
-          <Link href={`/topic/${slug}?mode=quiz`} className="act"><span className="act-icon">✏️</span>Quiz</Link>
+          <Link href={`/topic/${lessonId}?mode=flashcards`} className="act"><span className="act-icon">🃏</span>Flashcards</Link>
+          <Link href={`/topic/${lessonId}?mode=quiz`} className="act"><span className="act-icon">✏️</span>Quiz</Link>
           {signedIn && (
-            <Link href={`/topic/${slug}?mode=explain`} className="act"><span className="act-icon">💬</span>Explain</Link>
+            <Link href={`/topic/${lessonId}?mode=explain`} className="act"><span className="act-icon">💬</span>Explain</Link>
           )}
         </div>
       </div>

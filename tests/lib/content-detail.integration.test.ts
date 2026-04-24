@@ -1,28 +1,26 @@
 import { describe, it, expect } from "vitest"
-import { getTopicByCode, listTopics } from "@/lib/content"
+import { getTopicByLessonId, listTopics } from "@/lib/content"
 
-describe("getTopicByCode (integration)", () => {
-  it("returns null for an unknown code", async () => {
-    expect(await getTopicByCode("9.9.9")).toBeNull()
+describe("getTopicByLessonId (integration)", () => {
+  it("returns null for an unknown lessonId", async () => {
+    expect(await getTopicByLessonId("00000000-0000-0000-0000-000000000000")).toBeNull()
   })
 
-  it("returns a topic for the first coded lesson found", async () => {
+  it("returns a topic for the first lesson found", async () => {
     const topics = await listTopics()
-    const first = topics.find((t) => t.code !== "")
+    const first = topics[0]
     expect(first).toBeDefined()
-    const detail = await getTopicByCode(first!.code)
+    const detail = await getTopicByLessonId(first!.lessonId)
     expect(detail).not.toBeNull()
-    expect(detail!.code).toBe(first!.code)
     expect(detail!.lessonId).toBe(first!.lessonId)
     expect(Array.isArray(detail!.activities)).toBe(true)
   })
 
   it("every activity has a valid type from the allowed union", async () => {
     const topics = await listTopics()
-    // Pick a lesson with plenty of activities
-    const sampleCode = topics.find((t) => t.unitId === "1010-SYSTEMS-1" && t.code !== "")?.code
-    if (!sampleCode) return // skip if DB empty
-    const detail = await getTopicByCode(sampleCode)
+    const sample = topics.find((t) => t.unitId === "1010-SYSTEMS-1")
+    if (!sample) return // skip if DB empty
+    const detail = await getTopicByLessonId(sample.lessonId)
     expect(detail).not.toBeNull()
     const allowed = new Set([
       "text", "display-key-terms", "display-image", "show-video",
@@ -39,9 +37,9 @@ describe("getTopicByCode (integration)", () => {
 
   it("activities are sorted by order_by then activity_id", async () => {
     const topics = await listTopics()
-    const sampleCode = topics.find((t) => t.unitId === "1010-SYSTEMS-1" && t.code !== "")?.code
-    if (!sampleCode) return
-    const detail = await getTopicByCode(sampleCode)
+    const sample = topics.find((t) => t.unitId === "1010-SYSTEMS-1")
+    if (!sample) return
+    const detail = await getTopicByLessonId(sample.lessonId)
     if (!detail || detail.activities.length < 2) return
     for (let i = 1; i < detail.activities.length; i++) {
       const prev = detail.activities[i - 1]
