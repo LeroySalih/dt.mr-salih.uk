@@ -6,7 +6,7 @@ import { TopicLauncher } from "@/components/TopicLauncher"
 import { parseFlashcardLines } from "@/lib/flashcards/parse-flashcards"
 import { type QuizQuestion } from "@/components/modals/QuizModal"
 import { type ExplainPrompt } from "@/components/modals/ExplainModal"
-import { StudyNotes, groupIntoSections } from "@/components/notes/StudyNotes"
+import { StudyNotes, groupIntoPanels } from "@/components/notes/StudyNotes"
 
 export const dynamic = "force-dynamic"
 
@@ -81,7 +81,7 @@ export default async function TopicPage({ params, searchParams }: {
   const cards = fc ? parseFlashcardLines(fc.lines) : []
   const quizQuestions = extractQuizQuestions(topic.activities)
   const explainPrompts = extractExplainPrompts(topic.activities)
-  const sections = groupIntoSections(topic.activities)
+  const panels = groupIntoPanels(topic.activities)
 
   const launcher = (
     <TopicLauncher
@@ -103,7 +103,7 @@ export default async function TopicPage({ params, searchParams }: {
         section: topic.section,
         activityCount: topic.activities.length,
       }}
-      sections={sections}
+      panels={panels}
       tint={tint}
       launcher={launcher}
     />
