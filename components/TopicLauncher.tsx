@@ -1,6 +1,7 @@
 "use client"
 import * as React from "react"
 import { FlashcardsModal } from "@/components/modals/FlashcardsModal"
+import { QuizModal, type QuizQuestion } from "@/components/modals/QuizModal"
 import type { FlashCard } from "@/lib/flashcards/parse-flashcards"
 
 type Props = {
@@ -9,9 +10,10 @@ type Props = {
   signedIn: boolean
   flashcards: { doActivityId: string; deckActivityId: string; lines: string; cards: FlashCard[] } | null
   initialMode: string | null
+  quizQuestions: QuizQuestion[] | null
 }
 
-export function TopicLauncher({ topic, tint, signedIn, flashcards, initialMode }: Props) {
+export function TopicLauncher({ topic, tint, signedIn, flashcards, initialMode, quizQuestions }: Props) {
   const [mode, setMode] = React.useState<"none" | "flashcards" | "quiz" | "explain">(
     initialMode === "flashcards" || initialMode === "quiz" || initialMode === "explain"
       ? (initialMode as "flashcards" | "quiz" | "explain")
@@ -21,12 +23,13 @@ export function TopicLauncher({ topic, tint, signedIn, flashcards, initialMode }
   // Require sign-in for flashcards to write progress. Anonymous users can still
   // practise but nothing persists — skip session creation.
   const canFlashcard = !!flashcards && flashcards.cards.length > 0
+  const canQuiz = !!quizQuestions && quizQuestions.length > 0
 
   return (
     <>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <button className="btn primary" disabled={!canFlashcard} onClick={() => setMode("flashcards")}>🃏 Flashcards ({flashcards?.cards.length ?? 0})</button>
-        <button className="btn" disabled title="Quiz coming soon">✏️ Quiz</button>
+        <button className="btn primary" disabled={!canQuiz} onClick={() => setMode("quiz")}>✏️ Quiz ({quizQuestions?.length ?? 0})</button>
         {signedIn && <button className="btn" disabled title="Explain coming soon">💬 Explain</button>}
       </div>
 
@@ -44,6 +47,17 @@ export function TopicLauncher({ topic, tint, signedIn, flashcards, initialMode }
 
       {mode === "flashcards" && flashcards && !signedIn && (
         <FlashcardsAnonNotice onClose={() => setMode("none")} />
+      )}
+
+      {mode === "quiz" && canQuiz && (
+        <QuizModal
+          topicCode={topic.code}
+          topicTitle={topic.title}
+          tint={tint}
+          questions={quizQuestions!}
+          signedIn={signedIn}
+          onClose={() => setMode("none")}
+        />
       )}
     </>
   )

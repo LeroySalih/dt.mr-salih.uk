@@ -4,10 +4,12 @@ import { notFound } from "next/navigation"
 import { tintFor } from "@/lib/tints"
 import { TopicLauncher } from "@/components/TopicLauncher"
 import { parseFlashcardLines } from "@/lib/flashcards/parse-flashcards"
+import { type QuizQuestion } from "@/components/modals/QuizModal"
 
 export const dynamic = "force-dynamic"
 
 type BodyData = { flashcardActivityId?: string; lines?: string }
+type McqBody = { question?: string; options?: Array<{ id: string; text: string }>; correctOptionId?: string }
 
 function findFlashcards(activities: Activity[]): { doActivityId: string; deckActivityId: string; lines: string } | null {
   const doFc = activities.find((a) => a.type === "do-flashcards")
@@ -20,6 +22,22 @@ function findFlashcards(activities: Activity[]): { doActivityId: string; deckAct
   if (!deck) return null
   const deckBody = (deck.bodyData ?? {}) as BodyData
   return { doActivityId: doFc.activityId, deckActivityId: deck.activityId, lines: deckBody.lines ?? "" }
+}
+
+function extractQuizQuestions(activities: Activity[]): QuizQuestion[] {
+  return activities
+    .filter((a) => a.type === "multiple-choice-question")
+    .map((a) => {
+      const b = (a.bodyData ?? {}) as McqBody
+      if (!b.question || !Array.isArray(b.options) || !b.correctOptionId) return null
+      return {
+        activityId: a.activityId,
+        question: b.question,
+        options: b.options.filter((o): o is { id: string; text: string } => !!(o.id && o.text)),
+        correctOptionId: b.correctOptionId,
+      }
+    })
+    .filter((q): q is QuizQuestion => q !== null)
 }
 
 export default async function TopicPage({ params, searchParams }: {
@@ -44,6 +62,7 @@ export default async function TopicPage({ params, searchParams }: {
 
   const fc = findFlashcards(topic.activities)
   const cards = fc ? parseFlashcardLines(fc.lines) : []
+  const quizQuestions = extractQuizQuestions(topic.activities)
 
   return (
     <div className="page" style={{ paddingTop: 24 }}>
@@ -69,6 +88,7 @@ export default async function TopicPage({ params, searchParams }: {
           signedIn={signedIn}
           flashcards={fc ? { ...fc, cards } : null}
           initialMode={mode ?? null}
+          quizQuestions={quizQuestions.length > 0 ? quizQuestions : null}
         />
       </div>
     </div>
