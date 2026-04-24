@@ -21,6 +21,19 @@ export type NotesSection = {
   blocks: Activity[] // display-image / show-video that follow until next lead activity
 }
 
+type DisplaySectionBody = { description?: string }
+
+export type ActivityPanel =
+  | { type: "ungrouped"; sections: NotesSection[] }
+  | {
+      type: "display-section"
+      index: number
+      title: string
+      description: string
+      activityId: string
+      sections: NotesSection[]
+    }
+
 export function groupIntoSections(activities: Activity[]): NotesSection[] {
   const sections: NotesSection[] = []
   let current: NotesSection | null = null
@@ -59,6 +72,57 @@ export function groupIntoSections(activities: Activity[]): NotesSection[] {
   }
 
   return sections
+}
+
+export function groupIntoPanels(activities: Activity[]): ActivityPanel[] {
+  const panels: ActivityPanel[] = []
+  let pendingInner: Activity[] = []
+  let currentPanel: (ActivityPanel & { type: "display-section" }) | null = null
+  let sectionIndex = 0
+
+  const flushUngrouped = () => {
+    if (pendingInner.length === 0) return
+    panels.push({ type: "ungrouped", sections: groupIntoSections(pendingInner) })
+    pendingInner = []
+  }
+
+  const flushDisplaySection = () => {
+    if (!currentPanel) return
+    currentPanel.sections = groupIntoSections(pendingInner)
+    panels.push(currentPanel)
+    currentPanel = null
+    pendingInner = []
+  }
+
+  for (const a of activities) {
+    if (a.type === "display-section") {
+      if (currentPanel) {
+        flushDisplaySection()
+      } else {
+        flushUngrouped()
+      }
+      sectionIndex++
+      const body = (a.bodyData ?? {}) as DisplaySectionBody
+      currentPanel = {
+        type: "display-section",
+        index: sectionIndex,
+        title: a.title ?? "",
+        description: body.description ?? "",
+        activityId: a.activityId,
+        sections: [],
+      }
+    } else {
+      pendingInner.push(a)
+    }
+  }
+
+  if (currentPanel) {
+    flushDisplaySection()
+  } else {
+    flushUngrouped()
+  }
+
+  return panels
 }
 
 async function renderLeadBody(a: Activity): Promise<string> {
