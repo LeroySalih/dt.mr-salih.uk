@@ -5,6 +5,7 @@ import { tintFor } from "@/lib/tints"
 import { TopicLauncher } from "@/components/TopicLauncher"
 import { parseFlashcardLines } from "@/lib/flashcards/parse-flashcards"
 import { type QuizQuestion } from "@/components/modals/QuizModal"
+import { StudyNotes, groupIntoSections } from "@/components/notes/StudyNotes"
 
 export const dynamic = "force-dynamic"
 
@@ -47,7 +48,6 @@ export default async function TopicPage({ params, searchParams }: {
   const { code } = await params
   const { mode } = await searchParams
 
-  // Decode slug — might be a code like "1.1.1" or URL-encoded raw title
   const topic = await getTopicByCode(decodeURIComponent(code))
   if (!topic) notFound()
 
@@ -63,34 +63,30 @@ export default async function TopicPage({ params, searchParams }: {
   const fc = findFlashcards(topic.activities)
   const cards = fc ? parseFlashcardLines(fc.lines) : []
   const quizQuestions = extractQuizQuestions(topic.activities)
+  const sections = groupIntoSections(topic.activities)
+
+  const launcher = (
+    <TopicLauncher
+      topic={{ code: topic.code, title: topic.title || topic.rawTitle, lessonId: topic.lessonId }}
+      tint={tint}
+      signedIn={signedIn}
+      flashcards={fc ? { ...fc, cards } : null}
+      quizQuestions={quizQuestions}
+      initialMode={mode ?? null}
+    />
+  )
 
   return (
-    <div className="page" style={{ paddingTop: 24 }}>
-      <div style={{ maxWidth: 720, margin: "0 auto" }}>
-        <a href="/" className="btn" style={{ display: "inline-block", marginBottom: 16 }}>← All topics</a>
-        <h1 style={{ fontFamily: "var(--f-display)", fontWeight: 600, fontSize: 36, letterSpacing: "-0.02em", color: "var(--ink)", marginBottom: 8 }}>
-          {topic.code && <span className="card-code" style={{ marginRight: 12 }}>{topic.code}</span>}
-          {topic.title || topic.rawTitle}
-        </h1>
-        <p style={{ color: "var(--ink-3)", fontWeight: 700, fontSize: 13, marginBottom: 16 }}>
-          {topic.activities.length} activities · {cards.length} flashcards · {topic.section === "systems" ? "Systems" : "Core"}
-        </p>
-        <p style={{ color: "var(--ink-2)", marginBottom: 24 }}>
-          Study notes reader coming soon. For now, use the buttons below.
-        </p>
-        <TopicLauncher
-          topic={{
-            code: topic.code,
-            title: topic.title || topic.rawTitle,
-            lessonId: topic.lessonId,
-          }}
-          tint={tint}
-          signedIn={signedIn}
-          flashcards={fc ? { ...fc, cards } : null}
-          initialMode={mode ?? null}
-          quizQuestions={quizQuestions.length > 0 ? quizQuestions : null}
-        />
-      </div>
-    </div>
+    <StudyNotes
+      topic={{
+        code: topic.code,
+        title: topic.title || topic.rawTitle,
+        section: topic.section,
+        activityCount: topic.activities.length,
+      }}
+      sections={sections}
+      tint={tint}
+      launcher={launcher}
+    />
   )
 }
