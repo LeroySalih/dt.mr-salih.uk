@@ -203,17 +203,89 @@ async function Section({ section, n }: { section: NotesSection; n: number }) {
   )
 }
 
+async function DisplaySectionPanel({
+  panel,
+  startN,
+}: {
+  panel: ActivityPanel & { type: "display-section" }
+  startN: number
+}) {
+  const innerNodes = await Promise.all(
+    panel.sections.map((s, i) => Section({ section: s, n: startN + i + 1 })),
+  )
+  return (
+    <div
+      id={`panel-${panel.activityId}`}
+      style={{
+        background: "#fff",
+        border: "1.5px solid var(--ink-4)",
+        borderRadius: 14,
+        padding: 24,
+        margin: "24px 0",
+      }}
+    >
+      <div style={{ marginBottom: 16 }}>
+        <h2 style={{ margin: 0, fontSize: 20, color: "var(--ink)" }}>
+          Section {panel.index}: {panel.title}
+        </h2>
+        {panel.description && (
+          <p style={{ margin: "4px 0 0", color: "var(--ink-3)", fontSize: 14 }}>
+            {panel.description}
+          </p>
+        )}
+      </div>
+      {innerNodes}
+    </div>
+  )
+}
+
 type Props = {
   topic: { code: string; title: string; section: "core" | "systems"; activityCount: number }
-  sections: NotesSection[]
+  panels: ActivityPanel[]
   tint: string
   launcher: React.ReactNode
 }
 
-export async function StudyNotes({ topic, sections, tint, launcher }: Props) {
-  const sectionNodes = await Promise.all(
-    sections.map((s, i) => Section({ section: s, n: i + 1 })),
+export async function StudyNotes({ topic, panels, tint, launcher }: Props) {
+  // Pre-compute per-panel section start offsets for sequential numbering
+  let offset = 0
+  const panelOffsets = panels.map((panel) => {
+    const start = offset
+    offset += panel.sections.length
+    return start
+  })
+
+  // Render all panels
+  const panelNodes = await Promise.all(
+    panels.map(async (panel, pi) => {
+      const startN = panelOffsets[pi]
+      if (panel.type === "ungrouped") {
+        const nodes = await Promise.all(
+          panel.sections.map((s, i) => Section({ section: s, n: startN + i + 1 })),
+        )
+        return nodes.map((node, i) => (
+          <React.Fragment key={panel.sections[i].id}>{node}</React.Fragment>
+        ))
+      }
+      return [
+        <DisplaySectionPanel key={panel.activityId} panel={panel} startN={startN} />,
+      ]
+    }),
   )
+
+  // Flatten the nested arrays
+  const allNodes = panelNodes.flat()
+
+  // Build TOC entries
+  const tocEntries = panels.flatMap((panel) => {
+    if (panel.type === "ungrouped") {
+      return panel.sections.map((s) => ({
+        id: `sec-${s.id}`,
+        label: s.title || "Section",
+      }))
+    }
+    return [{ id: `panel-${panel.activityId}`, label: panel.title || "Section" }]
+  })
 
   const tintVars: Record<string, { tint: string; deep: string }> = {
     mint:  { tint: "var(--mint)",  deep: "var(--mint-deep)"  },
@@ -239,9 +311,9 @@ export async function StudyNotes({ topic, sections, tint, launcher }: Props) {
         <aside className="notes-toc">
           <div className="notes-toc-label">In this topic</div>
           <ol>
-            {sections.map((s) => (
-              <li key={s.id}>
-                <a href={`#sec-${s.id}`}>{s.title || "Section"}</a>
+            {tocEntries.map((entry) => (
+              <li key={entry.id}>
+                <a href={`#${entry.id}`}>{entry.label}</a>
               </li>
             ))}
           </ol>
@@ -255,15 +327,13 @@ export async function StudyNotes({ topic, sections, tint, launcher }: Props) {
             <p className="notes-hero-intro">{topic.activityCount} activities to work through.</p>
           </div>
 
-          {sectionNodes.length === 0 ? (
+          {allNodes.length === 0 ? (
             <div className="empty">
               <h3 className="empty-title">No notes yet</h3>
               <p>This topic doesn&apos;t have study notes populated. Try flashcards or quiz.</p>
             </div>
           ) : (
-            sectionNodes.map((node, i) => (
-              <React.Fragment key={sections[i].id}>{node}</React.Fragment>
-            ))
+            allNodes
           )}
 
           <div className="notes-cta">
